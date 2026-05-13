@@ -2466,4 +2466,71 @@ mod tests {
         assert_eq!(affinity.get(&1), Some(&CpuSet::new([2])));
         assert_eq!(affinity.get(&2), Some(&CpuSet::new([3])));
     }
+
+    /// Tests that smccc_trng is automatically enabled when a protection type that runs pVM
+    /// firmware (pvmfw) is used, since pvmfw relies on SMCCC TRNG for entropy.
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[test]
+    fn smccc_trng_auto_enabled_with_firmware() {
+        // --protected-vm uses pvmfw loaded from the hypervisor: auto-enable.
+        let cfg = config_from_args(&["--protected-vm", "/dev/null"]);
+        assert!(
+            cfg.smccc_trng,
+            "--protected-vm should auto-enable smccc_trng"
+        );
+
+        // --protected-vm-with-firmware uses a custom pvmfw: auto-enable.
+        let cfg = config_from_args(&["--protected-vm-with-firmware", "/dev/null", "/dev/null"]);
+        assert!(
+            cfg.smccc_trng,
+            "--protected-vm-with-firmware should auto-enable smccc_trng"
+        );
+
+        // --unprotected-vm-with-firmware also uses pvmfw: auto-enable.
+        let cfg = config_from_args(&["--unprotected-vm-with-firmware", "/dev/null", "/dev/null"]);
+        assert!(
+            cfg.smccc_trng,
+            "--unprotected-vm-with-firmware should auto-enable smccc_trng"
+        );
+
+        // --protected-vm-without-firmware does not use pvmfw: do NOT auto-enable.
+        let cfg = config_from_args(&["--protected-vm-without-firmware", "/dev/null"]);
+        assert!(
+            !cfg.smccc_trng,
+            "--protected-vm-without-firmware should NOT auto-enable smccc_trng"
+        );
+
+        // No protection: do NOT auto-enable.
+        let cfg = config_from_args(&["/dev/null"]);
+        assert!(
+            !cfg.smccc_trng,
+            "unprotected VM should NOT auto-enable smccc_trng"
+        );
+    }
+
+    /// Tests that an explicit --smccc-trng flag is respected regardless of protection type.
+    #[cfg(all(
+        target_arch = "aarch64",
+        any(target_os = "android", target_os = "linux")
+    ))]
+    #[test]
+    fn smccc_trng_explicit_flag_respected() {
+        // Explicit --smccc-trng enables it even without firmware.
+        let cfg = config_from_args(&["--smccc-trng", "/dev/null"]);
+        assert!(cfg.smccc_trng, "--smccc-trng flag should enable smccc_trng");
+
+        // Explicit --smccc-trng with firmware also enables it.
+        let cfg = config_from_args(&[
+            "--smccc-trng",
+            "--protected-vm-without-firmware",
+            "/dev/null",
+        ]);
+        assert!(
+            cfg.smccc_trng,
+            "--smccc-trng with --protected-vm-without-firmware should enable smccc_trng"
+        );
+    }
 }
