@@ -1967,6 +1967,7 @@ pub struct RunCommand {
     #[argh(switch)]
     /// expose and emulate support for SMCCC TRNG
     /// (EXPERIMENTAL) entropy generated might not meet ARM DEN0098 nor NIST 800-90B requirements
+    /// Automatically enabled when using a protection type that runs pVM firmware (pvmfw).
     pub smccc_trng: Option<bool>,
 
     #[argh(option, short = 's', arg_name = "PATH")]
@@ -3060,6 +3061,19 @@ impl TryFrom<RunCommand> for super::config::Config {
             cfg.usb = false;
             // Protected VMs can't trust the RNG device, so don't provide it.
             cfg.rng = false;
+        }
+
+        #[cfg(all(
+            target_arch = "aarch64",
+            any(target_os = "android", target_os = "linux")
+        ))]
+        {
+            // pvmfw requires SMCCC TRNG for entropy. Auto-enable it when using a protection type
+            // that runs pVM firmware, unless the user has explicitly opted in/out with
+            // --smccc-trng.
+            if cfg.protection_type.runs_firmware() && cmd.smccc_trng.is_none() {
+                cfg.smccc_trng = true;
+            }
         }
 
         cfg.battery_config = cmd.battery;
